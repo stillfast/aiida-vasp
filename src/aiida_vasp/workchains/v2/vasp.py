@@ -132,8 +132,13 @@ def _magmom_to_incar(magmom: Any) -> Any:
         # Already a serialised string, leave it alone.
         return magmom
 
+entries = list(magmom)
+    vector_entries = [_is_vector_magmom(entry) for entry in entries]
+    if any(vector_entries) and not all(vector_entries):
+        raise ValueError('MAGMOM entries must be all scalars or all 3-component vectors.')
+
     components: List[float] = []
-    for entry in magmom:
+    for entry in entries:
         components.extend(_magmom_entry_to_components(entry))
     return ' '.join(f'{value!r}' for value in components)
 
