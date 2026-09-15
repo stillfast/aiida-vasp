@@ -89,6 +89,8 @@ def _is_vector_magmom(entry: Any) -> bool:
 
 def _magmom_entry_to_components(entry: Any) -> List[float]:
     """Convert a magmom entry to a list of float components."""
+    if isinstance(entry, (list, tuple)) and not _is_vector_magmom(entry):
+        raise ValueError(f'MAGMOM vectors must have exactly 3 components, got {len(entry)}.')
     if _is_vector_magmom(entry):
         return [float(entry[0]), float(entry[1]), float(entry[2])]
     return [float(entry)]
@@ -132,7 +134,7 @@ def _magmom_to_incar(magmom: Any) -> Any:
         # Already a serialised string, leave it alone.
         return magmom
 
-entries = list(magmom)
+    entries = list(magmom)
     vector_entries = [_is_vector_magmom(entry) for entry in entries]
     if any(vector_entries) and not all(vector_entries):
         raise ValueError('MAGMOM entries must be all scalars or all 3-component vectors.')
@@ -141,6 +143,15 @@ entries = list(magmom)
     for entry in entries:
         components.extend(_magmom_entry_to_components(entry))
     return ' '.join(f'{value!r}' for value in components)
+
+
+def _set_spin_parameters(parameters: dict[str, Any], magmom: List[Any]) -> None:
+    """Set the spin mode implied by a validated per-site MAGMOM list."""
+    if any(_is_vector_magmom(entry) for entry in magmom):
+        if not parameters.get('lnoncollinear') and not parameters.get('lsorbit'):
+            parameters['lnoncollinear'] = True
+    elif 'ispin' not in parameters:
+        parameters['ispin'] = 2
 
 
 class VaspWorkChain(BaseRestartWorkChain, WithBuilderUpdater, ProtocolMixin):
@@ -724,10 +735,7 @@ A nested dictionary containing the following keys:
                 f'({len(self.inputs.structure.sites)}).'
             )
             self.ctx.inputs.parameters['magmom'] = _magmom_to_incar(magmom_list)
-            # If any entry is a vector, ensure non-collinear settings are sensible
-            if any(_is_vector_magmom(entry) for entry in magmom_list):
-                if not self.ctx.inputs.parameters.get('lnoncollinear'):
-                    self.ctx.inputs.parameters['lnoncollinear'] = True
+            _set_spin_parameters(self.ctx.inputs.parameters, magmom_list)
         elif 'magmom_mapping' in self.inputs:
             # Apply the magmom mapping if supplied
             mapping = self.inputs.magmom_mapping.get_dict()
@@ -744,6 +752,7 @@ A nested dictionary containing the following keys:
                 if 'ispin' not in self.ctx.inputs.parameters:
                     self.ctx.inputs.parameters['ispin'] = 2
                 self.ctx.inputs.parameters['magmom'] = _magmom_to_incar(magmom_list)
+                _set_spin_parameters(self.ctx.inputs.parameters, magmom_list)
 
         # Attach default monitors if not provided by the user
         if not self.inputs.get('monitors') and not settings_dict.get('no_default_monitors', False):

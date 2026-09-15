@@ -3,6 +3,10 @@ import pytest
 from aiida.common.extendeddicts import AttributeDict
 
 from aiida_vasp.utils.workchains import site_magnetization_to_magmom
+from aiida_vasp.workchains.v2.bands import (
+    _group_magmoms_for_symmetry,
+    _requires_vasp_kpoints_for_soc,
+)
 from aiida_vasp.workchains.v2.bands import _magmom_list_to_incar as bands_magmom_list_to_incar
 from aiida_vasp.workchains.v2.relax import VaspRelaxWorkChain, _magmom_list_to_incar, get_maximum_force
 
@@ -96,3 +100,20 @@ def test_bands_magmom_list_to_incar():
     """The bands workchain flattens mixed scalar/vector magmoms into an INCAR string."""
     assert bands_magmom_list_to_incar([2.0, -2.0]) == '2.0 -2.0'
     assert bands_magmom_list_to_incar([(2.0, 0.0, 0.0), (-2.0, 0.0, 0.0)]) == '2.0 0.0 0.0 -2.0 0.0 0.0'
+
+
+def test_group_magmoms_for_symmetry():
+    """Flat and nested vector moments become hashable per-site tuples."""
+    expected = [(2.0, 0.0, 0.0), (-2.0, 0.0, 0.0)]
+    assert _group_magmoms_for_symmetry([[2.0, 0.0, 0.0], [-2.0, 0.0, 0.0]], 2, True) == expected
+    assert _group_magmoms_for_symmetry('2.0 0.0 0.0 -2.0 0.0 0.0', 2, True) == [
+        ('2.0', '0.0', '0.0'),
+        ('-2.0', '0.0', '0.0'),
+    ]
+
+
+def test_requires_vasp_kpoints_for_soc():
+    """SOC bypasses spglib only when symmetry reduction is enabled."""
+    assert _requires_vasp_kpoints_for_soc({'lsorbit': True}) is True
+    assert _requires_vasp_kpoints_for_soc({'lsorbit': True, 'isym': 0}) is False
+    assert _requires_vasp_kpoints_for_soc({'lnoncollinear': True}) is False

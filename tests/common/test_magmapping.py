@@ -73,10 +73,11 @@ def test_normalise_magmom_single_component():
     assert _normalise_magmom([2.0]) == 2.0
 
 
-def test_normalise_magmom_empty_raises():
-    """An empty sequence is rejected."""
-    with pytest.raises(ValueError):
-        _normalise_magmom([])
+def test_normalise_magmom_invalid_length_raises():
+    """Sequences other than one or three components are rejected."""
+    for value in ([], [1.0, 2.0], [1.0, 2.0, 3.0, 4.0]):
+        with pytest.raises(ValueError, match='exactly 1 or 3 components'):
+            _normalise_magmom(value)
 
 
 def test_convert_to_plain_list_missing_mapping_raises():

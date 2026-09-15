@@ -84,6 +84,19 @@ def _magmom_list_to_incar(magmom_list: Any) -> str:
     return ' '.join(repr(x) for x in flat)
 
 
+def _group_magmoms_for_symmetry(magmom: Any, n_sites: int, is_vector: bool) -> List[Any]:
+    """Return hashable per-site MAGMOM entries for symmetry comparisons."""
+    values = magmom.split() if isinstance(magmom, str) else list(magmom)
+    if is_vector and len(values) == 3 * n_sites:
+        values = [values[i * 3 : (i + 1) * 3] for i in range(n_sites)]
+    return [tuple(entry) if isinstance(entry, (list, tuple)) else entry for entry in values]
+
+
+def _requires_vasp_kpoints_for_soc(incar: dict[str, Any]) -> bool:
+    """Return whether SOC prevents structural spglib symmetry reduction."""
+    return incar.get('isym', 2) > 0 and bool(incar.get('lsorbit'))
+
+
 SITE_MAG_THRESHOLD = 0  # Threshold for considering a site to be magnetic
 
 
@@ -917,17 +930,15 @@ class VaspHybridBandsWorkChain(VaspBandsWorkChain):
         incar_scf = self.inputs.scf.parameters['incar']
         magmom = incar_scf.get('magmom', None)
         symmetry_reduce = incar_scf.get('isym', 2) > 0
-        lnoncollinear = bool(incar_scf.get('lnoncollinear')) or bool(incar_scf.get('lsorbit'))
+        lsorbit = bool(incar_scf.get('lsorbit'))
+        if _requires_vasp_kpoints_for_soc(incar_scf):
+            self.report('SOC may lower crystal symmetry, cannot use spglib to generate the kpoints')
+            return
+        lnoncollinear = bool(incar_scf.get('lnoncollinear')) or lsorbit
         if symmetry_reduce and magmom is not None:
             # Check if symmetry is broken by magnetic moments
             species = self.inputs.structure.get_ase().get_chemical_symbols()
-            if isinstance(magmom, str):
-                magmom = magmom.split()
-            # For non-collinear magmom is given as (mx my mz) per atom, group them
-            if lnoncollinear and len(magmom) == 3 * len(species):
-                grouped = [tuple(magmom[i * 3 : (i + 1) * 3]) for i in range(len(species))]
-            else:
-                grouped = magmom
+            grouped = _group_magmoms_for_symmetry(magmom, len(species), lnoncollinear)
             assert len(grouped) == len(species), (
                 f'Mismatch between the magmom ({len(grouped)}) and the number of atoms ({len(species)}).'
             )

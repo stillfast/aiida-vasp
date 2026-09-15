@@ -1,10 +1,13 @@
 """Unit tests for the MAGMOM helper functions used by the v2 VaspWorkChain."""
 
+import pytest
+
 from aiida_vasp.workchains.v2.vasp import (
     _is_vector_magmom,
     _magmom_entry_to_components,
     _magmom_to_incar,
     _normalise_per_atom_magmom,
+    _set_spin_parameters,
 )
 
 
@@ -24,6 +27,8 @@ def test_magmom_entry_to_components():
     assert _magmom_entry_to_components(2) == [2.0]
     assert _magmom_entry_to_components([2.0, 0.0, 0.0]) == [2.0, 0.0, 0.0]
     assert _magmom_entry_to_components((2.0, 0.0, 0.0)) == [2.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match='exactly 3 components'):
+        _magmom_entry_to_components([2.0, 0.0])
 
 
 def test_normalise_per_atom_magmom_nested():
@@ -51,7 +56,26 @@ def test_magmom_to_incar():
     assert _magmom_to_incar([2.0, -2.0]) == '2.0 -2.0'
     assert _magmom_to_incar([(2.0, 0.0, 0.0), (-2.0, 0.0, 0.0)]) == '2.0 0.0 0.0 -2.0 0.0 0.0'
     assert _magmom_to_incar([[2.0, 0.0, 0.0], [-2.0, 0.0, 0.0]]) == '2.0 0.0 0.0 -2.0 0.0 0.0'
-    # Mixed scalar and 3-vector entries
-    assert _magmom_to_incar([2.0, (1.0, 0.0, 0.0)]) == '2.0 1.0 0.0 0.0'
+    with pytest.raises(ValueError, match='all scalars or all 3-component vectors'):
+        _magmom_to_incar([2.0, (1.0, 0.0, 0.0)])
     # Already serialised strings pass through untouched
     assert _magmom_to_incar('2.0 -2.0') == '2.0 -2.0'
+
+
+def test_set_spin_parameters():
+    """Scalar and vector moments enable their corresponding spin modes."""
+    scalar_parameters = {}
+    _set_spin_parameters(scalar_parameters, [2.0, -2.0])
+    assert scalar_parameters == {'ispin': 2}
+
+    explicit_ispin = {'ispin': 1}
+    _set_spin_parameters(explicit_ispin, [2.0, -2.0])
+    assert explicit_ispin == {'ispin': 1}
+
+    vector_parameters = {}
+    _set_spin_parameters(vector_parameters, [(2.0, 0.0, 0.0), (-2.0, 0.0, 0.0)])
+    assert vector_parameters == {'lnoncollinear': True}
+
+    soc_parameters = {'lsorbit': True}
+    _set_spin_parameters(soc_parameters, [(2.0, 0.0, 0.0)])
+    assert soc_parameters == {'lsorbit': True}

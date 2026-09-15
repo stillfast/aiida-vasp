@@ -19,18 +19,16 @@ Magmom = Union[MagmomScalar, MagmomVector, Sequence[float]]
 def _normalise_magmom(value: Magmom) -> Union[float, Tuple[float, float, float]]:
     """Convert a magmom into a canonical form.
 
-    A scalar is kept as a float. A sequence is converted into a 3-tuple (any
-    trailing components are ignored, missing components default to 0.0).
+    A scalar is kept as a float. A one-component sequence is converted to a
+    scalar and a three-component sequence is converted to a 3-tuple.
     """
     if isinstance(value, (int, float)):
         return float(value)
     seq = list(value)
-    if len(seq) == 0:
-        raise ValueError('Magmom must have at least one component.')
     if len(seq) == 1:
         return float(seq[0])
-    # Pad/truncate to 3 components
-    seq = list(seq[:3]) + [0.0] * max(0, 3 - len(seq))
+    if len(seq) != 3:
+        raise ValueError(f'Magmom sequences must have exactly 1 or 3 components, got {len(seq)}.')
     return (float(seq[0]), float(seq[1]), float(seq[2]))
 
 
